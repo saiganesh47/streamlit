@@ -42,7 +42,8 @@ def _downcast_large_type(arrow_type: pa.DataType) -> pa.DataType:
     """Recursively downcast a single Arrow type to its standard counterpart.
 
     Handles ``large_string`` -> ``string``, ``large_binary`` -> ``binary``,
-    and ``large_list`` -> ``list`` (with recursive value-type downcasting).
+    ``large_list`` -> ``list``, and recursively downcasts container types
+    (``struct``, ``map``, ``list``) that may contain large types.
     Returns the type unchanged if no downcasting is needed.
     """
     import pyarrow as pa
@@ -54,6 +55,17 @@ def _downcast_large_type(arrow_type: pa.DataType) -> pa.DataType:
 
     if isinstance(arrow_type, pa.LargeListType):
         return pa.list_(_downcast_large_type(arrow_type.value_type))
+    if isinstance(arrow_type, pa.ListType):
+        return pa.list_(_downcast_large_type(arrow_type.value_type))
+    if isinstance(arrow_type, pa.StructType):
+        return pa.struct(
+            [pa.field(f.name, _downcast_large_type(f.type)) for f in arrow_type]
+        )
+    if isinstance(arrow_type, pa.MapType):
+        return pa.map_(
+            _downcast_large_type(arrow_type.key_type),
+            _downcast_large_type(arrow_type.item_type),
+        )
     if arrow_type in large_type_map:
         return large_type_map[arrow_type]
     return arrow_type
@@ -113,6 +125,9 @@ def _convert_df_to_component_arrow_bytes(df: DataFrame) -> bytes:
         df = dataframe_util.fix_arrow_incompatible_column_types(df)
         table = pa.Table.from_pandas(df)
 
+    # Always attempt downcasting rather than gating on pandas >= 3. The
+    # function is a no-op when no large types are present (just a schema
+    # scan), so the overhead on pandas 2.x is negligible.
     table = _downcast_large_arrow_types(table)
     return convert_arrow_table_to_arrow_bytes(table)
 
