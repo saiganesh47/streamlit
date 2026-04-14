@@ -787,52 +787,56 @@ class ComponentArrowTest(unittest.TestCase):
         """Test that large_binary columns are downcast to binary for custom components."""
         import pyarrow as pa
 
+        from streamlit.components.v1.component_arrow import (
+            _downcast_large_arrow_types,
+        )
+
+        # Test _downcast_large_arrow_types directly on a table with large_binary
+        # to guarantee the large type is present regardless of pandas version.
         table = pa.table({"col": pa.array([b"x", b"y", b"z"], type=pa.large_binary())})
-        df = table.to_pandas()
+        assert table.schema.field("col").type == pa.large_binary()
 
-        proto = ArrowTableProto()
-        component_arrow.marshall(proto, df)
-
-        result_table = pa.ipc.open_stream(proto.data).read_all()
-        for field in result_table.schema:
-            if field.name == "col":
-                assert field.type == pa.binary(), (
-                    f"Expected binary type, got {field.type}"
-                )
+        result = _downcast_large_arrow_types(table)
+        assert result.schema.field("col").type == pa.binary(), (
+            f"Expected binary type, got {result.schema.field('col').type}"
+        )
 
     def test_marshall_downcasts_large_list(self):
         """Test that large_list columns are downcast to list for custom components."""
         import pyarrow as pa
 
+        from streamlit.components.v1.component_arrow import (
+            _downcast_large_arrow_types,
+        )
+
+        # Test _downcast_large_arrow_types directly on a table with large_list
+        # to guarantee the large type is present regardless of pandas version.
         large_list_type = pa.large_list(pa.int64())
         table = pa.table({"col": pa.array([[1, 2], [3]], type=large_list_type)})
-        df = table.to_pandas()
+        assert table.schema.field("col").type == large_list_type
 
-        proto = ArrowTableProto()
-        component_arrow.marshall(proto, df)
-
-        result_table = pa.ipc.open_stream(proto.data).read_all()
-        for field in result_table.schema:
-            if field.name == "col":
-                assert field.type == pa.list_(pa.int64()), (
-                    f"Expected list type, got {field.type}"
-                )
+        result = _downcast_large_arrow_types(table)
+        assert result.schema.field("col").type == pa.list_(pa.int64()), (
+            f"Expected list type, got {result.schema.field('col').type}"
+        )
 
     def test_marshall_downcasts_nested_large_list_with_large_string(self):
         """Test that large_list(large_string()) is recursively downcast to list(string)."""
         import pyarrow as pa
 
+        from streamlit.components.v1.component_arrow import (
+            _downcast_large_arrow_types,
+        )
+
+        # Test _downcast_large_arrow_types directly to guarantee large types
+        # are present regardless of pandas version.
         nested_type = pa.large_list(pa.large_string())
         table = pa.table({"col": pa.array([["a", "b"], ["c"]], type=nested_type)})
-        df = table.to_pandas()
+        assert table.schema.field("col").type == nested_type
 
-        proto = ArrowTableProto()
-        component_arrow.marshall(proto, df)
-
-        result_table = pa.ipc.open_stream(proto.data).read_all()
-        col_field = result_table.schema.field("col")
-        assert col_field.type == pa.list_(pa.string()), (
-            f"Expected list(string), got {col_field.type}"
+        result = _downcast_large_arrow_types(table)
+        assert result.schema.field("col").type == pa.list_(pa.string()), (
+            f"Expected list(string), got {result.schema.field('col').type}"
         )
 
     def test_marshall_preserves_non_large_types(self):

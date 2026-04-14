@@ -59,12 +59,13 @@ def _downcast_large_type(arrow_type: pa.DataType) -> pa.DataType:
         return pa.list_(_downcast_large_type(arrow_type.value_type))
     if isinstance(arrow_type, pa.StructType):
         return pa.struct(
-            [pa.field(f.name, _downcast_large_type(f.type)) for f in arrow_type]
+            [f.with_type(_downcast_large_type(f.type)) for f in arrow_type]
         )
     if isinstance(arrow_type, pa.MapType):
         return pa.map_(
             _downcast_large_type(arrow_type.key_type),
             _downcast_large_type(arrow_type.item_type),
+            keys_sorted=arrow_type.keys_sorted,
         )
     if arrow_type in large_type_map:
         return large_type_map[arrow_type]
@@ -100,10 +101,10 @@ def _downcast_large_arrow_types(table: pa.Table) -> pa.Table:
 def _convert_df_to_component_arrow_bytes(df: DataFrame) -> bytes:
     """Convert a DataFrame to Arrow IPC bytes, downcasting large types.
 
-    This wraps ``convert_pandas_df_to_arrow_bytes`` with an additional step
-    that downcasts large Arrow types (``large_string``, ``large_binary``,
-    ``large_list``) so that custom components bundling older Arrow JS
-    libraries can decode the data.
+    Converts a pandas DataFrame to a PyArrow table, applies automatic fixups
+    for incompatible column types, then downcasts large Arrow types
+    (``large_string``, ``large_binary``, ``large_list``) so that custom
+    components bundling older Arrow JS libraries can decode the data.
     """
     import pyarrow as pa
 
